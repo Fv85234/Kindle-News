@@ -58,8 +58,9 @@ For a real hosted deployment, add these environment variables in Vercel:
 - `OPENAI_RANKING_MODEL`
 - `CRON_SECRET`
 - `BLOB_READ_WRITE_TOKEN`
+- `BLOB_STORE_ACCESS`
 
-`BLOB_READ_WRITE_TOKEN` comes from a Vercel Blob store. Without it, the app falls back to ephemeral local storage, which is fine for local development but not for a persistent hosted app.
+`BLOB_READ_WRITE_TOKEN` comes from a Vercel Blob store. Without it, the app falls back to ephemeral local storage, which is fine for local development but not for a persistent hosted app. Set `BLOB_STORE_ACCESS=public` for a public Blob store or `BLOB_STORE_ACCESS=private` for a private one.
 
 ## Notes
 

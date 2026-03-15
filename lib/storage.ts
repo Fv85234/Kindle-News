@@ -21,6 +21,10 @@ function usesBlobStorage() {
   return Boolean(process.env.BLOB_READ_WRITE_TOKEN);
 }
 
+function getBlobAccessMode(): "public" | "private" {
+  return process.env.BLOB_STORE_ACCESS === "private" ? "private" : "public";
+}
+
 async function ensureLocalStorage() {
   await fs.mkdir(dataDir, { recursive: true });
   await fs.mkdir(editionsDir, { recursive: true });
@@ -56,7 +60,7 @@ async function writeLocalAppData(data: AppData): Promise<void> {
 
 async function readBlobText(pathname: string): Promise<string | null> {
   try {
-    const result = await getBlob(pathname, { access: "private" });
+    const result = await getBlob(pathname, { access: getBlobAccessMode() });
     if (!result || result.statusCode !== 200 || !result.stream) {
       return null;
     }
@@ -73,7 +77,7 @@ async function writeBlobData(
   contentType: string
 ): Promise<string> {
   const result = await putBlob(pathname, body, {
-    access: "private",
+    access: getBlobAccessMode(),
     addRandomSuffix: false,
     allowOverwrite: true,
     contentType
