@@ -5,6 +5,10 @@ import { ExtractedArticle } from "@/lib/types";
 import { slugify } from "@/lib/utils";
 
 const TAIL_SPACE_HTML = Array.from({ length: 8 }, () => `<p class="tail-space">&#160;</p>`).join("");
+const ARTICLE_BUFFER_HTML = Array.from(
+  { length: 14 },
+  () => `<p class="reader-buffer">&#160;</p>`
+).join("");
 const DAILY_NEWS_FILE = "daily-news.xhtml";
 
 function stripVisualMedia(html: string): string {
@@ -29,8 +33,10 @@ const kindleStyles = `
   .toc-list li { margin-bottom: 0.8em; }
   .source { font-size: 0.95em; color: #7a3d26; }
   .back-link { margin-top: 1.8em; font-weight: bold; }
+  .article-end { margin-top: 0; }
   .summary-fallback { color: #6c6257; font-style: italic; }
   .tail-space { margin: 0 0 1.15em; color: transparent; }
+  .reader-buffer { margin: 0 0 1.4em; color: transparent; }
   blockquote { margin-left: 1em; color: #4f463d; }
   img, figure, picture, svg, video, iframe { display: none !important; }
 `;
@@ -80,8 +86,11 @@ export async function buildEpub(
         <p class="meta">${story.sourceName} · ${DateTime.fromISO(story.publishedAt).toFormat("dd LLL yyyy HH:mm")}${story.author ? ` · ${story.author}` : ""}</p>
         <p class="dek"><a href="${story.url}">Original source link</a></p>
         ${stripVisualMedia(story.contentHtml)}
-        <p class="back-link"><a href="${DAILY_NEWS_FILE}">Back to Daily news</a></p>
-        ${TAIL_SPACE_HTML}
+        <div class="article-end">
+          ${ARTICLE_BUFFER_HTML}
+          <p class="back-link"><a href="${DAILY_NEWS_FILE}">Back to Daily news</a></p>
+          ${ARTICLE_BUFFER_HTML}
+        </div>
       `
     }))
   ];
