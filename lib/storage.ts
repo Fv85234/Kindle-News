@@ -1,3 +1,4 @@
+import os from "node:os";
 import { get as getBlob, put as putBlob } from "@vercel/blob";
 import { promises as fs } from "node:fs";
 import path from "node:path";
@@ -8,7 +9,9 @@ import { appDataSchema } from "@/lib/schema";
 import { AppData, EditionRecord, FeedbackMemory, StoryReaction } from "@/lib/types";
 import { normalizeTokens } from "@/lib/utils";
 
-const dataDir = path.join(process.cwd(), "data");
+const dataDir = process.env.VERCEL
+  ? path.join(os.tmpdir(), "kindle-news-digest")
+  : path.join(process.cwd(), "data");
 const dataFile = path.join(dataDir, "app-data.json");
 const editionsDir = path.join(dataDir, "editions");
 const blobAppDataPath = "state/app-data.json";
@@ -52,12 +55,16 @@ async function writeLocalAppData(data: AppData): Promise<void> {
 }
 
 async function readBlobText(pathname: string): Promise<string | null> {
-  const result = await getBlob(pathname, { access: "private" });
-  if (!result || result.statusCode !== 200 || !result.stream) {
+  try {
+    const result = await getBlob(pathname, { access: "private" });
+    if (!result || result.statusCode !== 200 || !result.stream) {
+      return null;
+    }
+
+    return new Response(result.stream).text();
+  } catch {
     return null;
   }
-
-  return new Response(result.stream).text();
 }
 
 async function writeBlobData(
@@ -104,12 +111,16 @@ export async function readAppData(): Promise<AppData> {
     return readLocalAppData();
   }
 
-  const remote = await readBlobAppData();
-  if (remote) {
-    return remote;
-  }
+  try {
+    const remote = await readBlobAppData();
+    if (remote) {
+      return remote;
+    }
 
-  return seedBlobStorage();
+    return seedBlobStorage();
+  } catch {
+    return readLocalAppData();
+  }
 }
 
 export async function writeAppData(data: AppData): Promise<void> {
@@ -118,7 +129,11 @@ export async function writeAppData(data: AppData): Promise<void> {
     return;
   }
 
-  await writeBlobAppData(data);
+  try {
+    await writeBlobAppData(data);
+  } catch {
+    await writeLocalAppData(data);
+  }
 }
 
 export async function updateSettings(nextSettings: AppData["settings"]): Promise<AppData> {
@@ -142,12 +157,19 @@ export async function persistEditionBinary(fileName: string, buffer: Buffer): Pr
     await ensureLocalStorage();
     const filePath = path.join(editionsDir, fileName);
     await fs.writeFile(filePath, buffer);
-    return path.relative(process.cwd(), filePath);
+    return filePath;
   }
 
-  const pathname = `${blobEditionsPrefix}/${fileName}`;
-  const storedPath = await writeBlobData(pathname, buffer, "application/epub+zip");
-  return `blob:${storedPath}`;
+  try {
+    const pathname = `${blobEditionsPrefix}/${fileName}`;
+    const storedPath = await writeBlobData(pathname, buffer, "application/epub+zip");
+    return `blob:${storedPath}`;
+  } catch {
+    await ensureLocalStorage();
+    const filePath = path.join(editionsDir, fileName);
+    await fs.writeFile(filePath, buffer);
+    return filePath;
+  }
 }
 
 function adjustScore(
