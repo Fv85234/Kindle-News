@@ -20,7 +20,6 @@ type RunDailyDigestOptions = {
   mode?: "manual" | "scheduled";
 };
 const MINIMUM_DELIVERY_STORIES = 3;
-const MINIMUM_FULL_ARTICLES = 3;
 const EXTRACTION_POOL_MULTIPLIER = 14;
 const EXTRACTION_POOL_MINIMUM = 120;
 
@@ -158,16 +157,6 @@ export async function runDailyDigest(
   if (extracted.length < MINIMUM_DELIVERY_STORIES) {
       return fail(
         `Only found ${extracted.length} high-quality unseen articles, so the digest was not sent.`,
-        unseenCandidates.length
-      );
-    }
-
-    const fullArticleCount = extracted.filter(
-      (story) => story.extractionKind !== "summary"
-    ).length;
-    if (fullArticleCount < MINIMUM_FULL_ARTICLES) {
-      return fail(
-        `Only found ${fullArticleCount} full articles. The rest would have been summaries, so the digest was not sent.`,
         unseenCandidates.length
       );
     }

@@ -5,10 +5,7 @@ import { ExtractedArticle } from "@/lib/types";
 import { slugify } from "@/lib/utils";
 
 const TAIL_SPACE_HTML = Array.from({ length: 8 }, () => `<p class="tail-space">&#160;</p>`).join("");
-const NAV_BUFFER_HTML = Array.from(
-  { length: 18 },
-  () => `<p class="reader-buffer">&#160;</p>`
-).join("");
+const NAV_BUFFER_HTML = Array.from({ length: 10 }, () => `<p class="reader-buffer">&#160;</p>`).join("");
 const DAILY_NEWS_FILE = "daily-news.xhtml";
 
 function stripVisualMedia(html: string): string {
@@ -32,9 +29,11 @@ const kindleStyles = `
   .meta { font-size: 0.9em; color: #6c6257; margin-bottom: 1.4em; }
   .toc-list li { margin-bottom: 0.8em; }
   .source { font-size: 0.95em; color: #7a3d26; }
+  .jump-note { color: #6c6257; margin-top: 3em; }
+  .article-start { min-height: 70vh; }
+  .article-body { page-break-before: always; break-before: page; }
   .back-link { margin-top: 1.8em; font-weight: bold; }
   .article-end { margin-top: 0; page-break-before: always; break-before: page; }
-  .summary-fallback { color: #6c6257; font-style: italic; }
   .tail-space { margin: 0 0 1.15em; color: transparent; }
   .reader-buffer { margin: 0 0 1.4em; color: transparent; }
   blockquote { margin-left: 1em; color: #4f463d; }
@@ -82,11 +81,16 @@ export async function buildEpub(
       title: story.title,
       filename,
       content: `
-        <h1>${story.title}</h1>
-        <p class="meta">${story.sourceName} · ${DateTime.fromISO(story.publishedAt).toFormat("dd LLL yyyy HH:mm")}${story.author ? ` · ${story.author}` : ""}</p>
-        <p class="dek"><a href="${story.url}">Original source link</a></p>
-        ${stripVisualMedia(story.contentHtml)}
-        <div style="page-break-after: always; break-after: page;"><span></span></div>
+        <section class="article-start">
+          <h1>${story.title}</h1>
+          <p class="meta">${story.sourceName} · ${DateTime.fromISO(story.publishedAt).toFormat("dd LLL yyyy HH:mm")}${story.author ? ` · ${story.author}` : ""}</p>
+          <p class="dek"><a href="${story.url}">Original source link</a></p>
+          <p class="jump-note">Swipe once to start reading the full article.</p>
+        </section>
+        <div class="article-body">
+          <mbp:pagebreak />
+          ${stripVisualMedia(story.contentHtml)}
+        </div>
         <div class="article-end">
           <mbp:pagebreak />
           ${NAV_BUFFER_HTML}

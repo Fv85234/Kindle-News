@@ -16,8 +16,9 @@ describe("extract fallback", () => {
     vi.mocked(extractFromHtml).mockReset();
   });
 
-  test("uses the feed summary when full extraction fails but summary is still useful", async () => {
+  test("drops the candidate when only a short summary is available", async () => {
     vi.mocked(extract).mockRejectedValueOnce(new Error("blocked"));
+    vi.mocked(extractFromHtml).mockResolvedValueOnce(null);
 
     const article = await extractReadableArticle({
       id: "candidate-1",
@@ -45,8 +46,49 @@ describe("extract fallback", () => {
       }
     });
 
+    expect(article).toBeNull();
+  });
+
+  test("uses feed html only when it is meaningfully longer than the feed summary", async () => {
+    const longFeedText = Array.from(
+      { length: 260 },
+      (_, index) => `analysis${index}`
+    ).join(" ");
+    const longFeedHtml = `<p>${longFeedText}</p>`;
+
+    vi.mocked(extract).mockRejectedValueOnce(new Error("blocked"));
+    vi.mocked(extractFromHtml).mockResolvedValueOnce({
+      content: longFeedHtml,
+      author: "Example Reporter"
+    });
+
+    const article = await extractReadableArticle({
+      id: "candidate-2",
+      sourceId: REPUTABLE_SOURCES[0].id,
+      sourceName: REPUTABLE_SOURCES[0].name,
+      title: "OpenAI launches a cheaper model",
+      url: "https://example.com/openai-cheaper-model",
+      publishedAt: new Date().toISOString(),
+      summary: "OpenAI unveiled a cheaper model for developers as price competition intensifies.",
+      feedHtml: longFeedHtml,
+      categories: ["technology"],
+      matchedTerms: ["openai", "ai"],
+      matchedTopics: ["artificial intelligence", "technology"],
+      clusterKey: "openai-cheaper-model",
+      ranking: {
+        topicMatch: 0.9,
+        importance: 0.8,
+        freshness: 0.9,
+        sourceReputation: 0.95,
+        clusterStrength: 0.4,
+        feedbackBoost: 0,
+        offTopicPenalty: 0,
+        diversityPenalty: 0,
+        total: 0.87
+      }
+    });
+
     expect(article).not.toBeNull();
-    expect(article?.contentHtml).toContain("source summary");
-    expect(article?.plainText).toContain("cheaper model");
+    expect(article?.extractionKind).toBe("feed");
   });
 });

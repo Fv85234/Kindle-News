@@ -7,17 +7,7 @@ const ARTICLE_HEADERS = {
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0 Safari/537.36"
 };
 const MIN_FULL_ARTICLE_WORDS = 140;
-const MIN_FEED_ARTICLE_WORDS = 120;
-const MAX_SUMMARY_FALLBACKS = 2;
-
-function escapeHtml(input: string): string {
-  return input
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
-}
+const MIN_FEED_ARTICLE_WORDS = 220;
 
 function htmlToText(html: string): string {
   return html
@@ -33,9 +23,17 @@ function qualityPass(text: string): boolean {
   return wordCount >= MIN_FULL_ARTICLE_WORDS;
 }
 
-function feedQualityPass(text: string): boolean {
-  const wordCount = text.split(/\s+/).filter(Boolean).length;
-  return wordCount >= MIN_FEED_ARTICLE_WORDS;
+function countWords(text: string): number {
+  return text.split(/\s+/).filter(Boolean).length;
+}
+
+function feedQualityPass(text: string, summary: string): boolean {
+  const wordCount = countWords(text);
+  const summaryWordCount = countWords(summary);
+  return (
+    wordCount >= MIN_FEED_ARTICLE_WORDS &&
+    wordCount >= Math.max(summaryWordCount * 2.2, summaryWordCount + 120)
+  );
 }
 
 function normalizeExtractedArticle(
@@ -51,7 +49,9 @@ function normalizeExtractedArticle(
   }
 
   const passes =
-    extractionKind === "feed" ? feedQualityPass(plainText) : qualityPass(plainText);
+    extractionKind === "feed"
+      ? feedQualityPass(plainText, candidate.summary)
+      : qualityPass(plainText);
   if (!passes) {
     return null;
   }
@@ -65,43 +65,9 @@ function normalizeExtractedArticle(
   };
 }
 
-function buildSummaryFallback(candidate: CandidateArticle): ExtractedArticle | null {
-  const summary = candidate.summary.trim();
-  const wordCount = summary.split(/\s+/).filter(Boolean).length;
-  if (wordCount < 10) {
-    return null;
-  }
-
-  const safeSummary = escapeHtml(summary);
-  const contentHtml = `
-    <p class="summary-fallback">Full article extraction was unavailable, so this section uses the source summary.</p>
-    <p>${safeSummary}</p>
-  `;
-
-  return {
-    ...candidate,
-    contentHtml,
-    plainText: summary,
-    extractionKind: "summary"
-  };
-}
-
 export async function extractReadableArticle(
   candidate: CandidateArticle
 ): Promise<ExtractedArticle | null> {
-  if (candidate.feedHtml) {
-    const feedResult = await extractFromHtml(candidate.feedHtml, candidate.url, {
-      contentLengthThreshold: 120
-    }).catch(() => null);
-    const normalizedFeed = feedResult
-      ? normalizeExtractedArticle(candidate, feedResult, "feed")
-      : null;
-
-    if (normalizedFeed) {
-      return normalizedFeed;
-    }
-  }
-
   try {
     const result = await extract(
       candidate.url,
@@ -120,10 +86,23 @@ export async function extractReadableArticle(
       return normalized;
     }
   } catch {
-    // Fall through to summary fallback below.
+    // Fall through to feed extraction below.
   }
 
-  return buildSummaryFallback(candidate);
+  if (candidate.feedHtml) {
+    const feedResult = await extractFromHtml(candidate.feedHtml, candidate.url, {
+      contentLengthThreshold: 220
+    }).catch(() => null);
+    const normalizedFeed = feedResult
+      ? normalizeExtractedArticle(candidate, feedResult, "feed")
+      : null;
+
+    if (normalizedFeed) {
+      return normalizedFeed;
+    }
+  }
+
+  return null;
 }
 
 export async function extractStoryBatch(
@@ -131,18 +110,11 @@ export async function extractStoryBatch(
   storyTarget: number
 ): Promise<ExtractedArticle[]> {
   const extracted: ExtractedArticle[] = [];
-  const summaryFallbacks: ExtractedArticle[] = [];
 
   for (const candidate of rankedCandidates) {
     const article = await extractReadableArticle(candidate);
-    if (article && article.extractionKind !== "summary") {
+    if (article) {
       extracted.push(article);
-    } else if (
-      article &&
-      article.extractionKind === "summary" &&
-      summaryFallbacks.length < MAX_SUMMARY_FALLBACKS
-    ) {
-      summaryFallbacks.push(article);
     }
 
     if (extracted.length >= storyTarget) {
@@ -150,5 +122,5 @@ export async function extractStoryBatch(
     }
   }
 
-  return [...extracted, ...summaryFallbacks].slice(0, storyTarget);
+  return extracted;
 }

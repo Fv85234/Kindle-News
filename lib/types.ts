@@ -56,7 +56,7 @@ export type ExtractedArticle = CandidateArticle & {
   author?: string;
   contentHtml: string;
   plainText: string;
-  extractionKind: "article" | "feed" | "summary";
+  extractionKind: "article" | "feed";
 };
 
 export type EditionRecord = {
