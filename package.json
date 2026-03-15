@@ -1,0 +1,35 @@
+{
+  "name": "kindle-news-digest",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "tsc --noEmit --project tsconfig.lint.json",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@extractus/article-extractor": "^8.0.14",
+    "@vercel/blob": "^2.3.1",
+    "epub-gen-memory": "^1.1.2",
+    "luxon": "^3.6.1",
+    "next": "^15.3.1",
+    "nodemailer": "^7.0.3",
+    "openai": "^5.12.2",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "rss-parser": "^3.13.0",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/luxon": "^3.7.1",
+    "@types/node": "^24.3.0",
+    "@types/nodemailer": "^7.0.1",
+    "@types/react": "^19.1.11",
+    "@types/react-dom": "^19.1.7",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4"
+  }
+}
