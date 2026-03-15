@@ -1,11 +1,12 @@
 import { HistoryList } from "@/components/history-list";
 import { SettingsForm } from "@/components/settings-form";
+import { DEFAULT_APP_DATA } from "@/lib/defaults";
 import { readAppData } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
-  const data = await readAppData();
+  const data = await readAppData().catch(() => DEFAULT_APP_DATA);
   const { settings, deliveryHistory } = data;
 
   return (

@@ -107,19 +107,23 @@ async function seedBlobStorage(): Promise<AppData> {
 }
 
 export async function readAppData(): Promise<AppData> {
-  if (!usesBlobStorage()) {
-    return readLocalAppData();
-  }
-
   try {
-    const remote = await readBlobAppData();
-    if (remote) {
-      return remote;
+    if (!usesBlobStorage()) {
+      return await readLocalAppData();
     }
 
-    return seedBlobStorage();
+    try {
+      const remote = await readBlobAppData();
+      if (remote) {
+        return remote;
+      }
+
+      return await seedBlobStorage();
+    } catch {
+      return await readLocalAppData();
+    }
   } catch {
-    return readLocalAppData();
+    return DEFAULT_APP_DATA;
   }
 }
 
