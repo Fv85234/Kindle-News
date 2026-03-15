@@ -60,7 +60,7 @@ For a real hosted deployment, add these environment variables in Vercel:
 - `BLOB_READ_WRITE_TOKEN`
 - `BLOB_STORE_ACCESS`
 
-`BLOB_READ_WRITE_TOKEN` comes from a Vercel Blob store. Without it, the app falls back to ephemeral local storage, which is fine for local development but not for a persistent hosted app. Set `BLOB_STORE_ACCESS=public` for a public Blob store or `BLOB_STORE_ACCESS=private` for a private one.
+`BLOB_READ_WRITE_TOKEN` comes from a Vercel Blob store. Without it, the app falls back to ephemeral local storage, which is fine for local development but not for a persistent hosted app. Set `BLOB_STORE_ACCESS=public` for a public Blob store or `BLOB_STORE_ACCESS=private` for a private one. For public Blob stores, the app writes versioned `state/app-data-*.json` files and reads the newest one to avoid stale-cache issues on overwritten blobs.
 
 ## Notes
 

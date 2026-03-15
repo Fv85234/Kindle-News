@@ -1,5 +1,5 @@
 import os from "node:os";
-import { get as getBlob, put as putBlob } from "@vercel/blob";
+import { del as deleteBlob, get as getBlob, list as listBlobs, put as putBlob } from "@vercel/blob";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 
@@ -14,8 +14,10 @@ const dataDir = process.env.VERCEL
   : path.join(process.cwd(), "data");
 const dataFile = path.join(dataDir, "app-data.json");
 const editionsDir = path.join(dataDir, "editions");
-const blobAppDataPath = "state/app-data.json";
+const blobAppDataPrefix = "state/app-data";
+const legacyBlobAppDataPath = "state/app-data.json";
 const blobEditionsPrefix = "editions";
+const MAX_STORED_STATE_VERSIONS = 5;
 
 function usesBlobStorage() {
   return Boolean(process.env.BLOB_READ_WRITE_TOKEN);
@@ -71,6 +73,23 @@ async function readBlobText(pathname: string): Promise<string | null> {
   }
 }
 
+async function findLatestBlobPath(prefix: string): Promise<string | null> {
+  try {
+    const response = await listBlobs({ prefix, limit: 20 });
+    if (!response.blobs.length) {
+      return null;
+    }
+
+    const latest = [...response.blobs].sort(
+      (left, right) => right.uploadedAt.getTime() - left.uploadedAt.getTime()
+    )[0];
+
+    return latest?.pathname ?? null;
+  } catch {
+    return null;
+  }
+}
+
 async function writeBlobData(
   pathname: string,
   body: string | Buffer,
@@ -87,7 +106,9 @@ async function writeBlobData(
 }
 
 async function readBlobAppData(): Promise<AppData | null> {
-  const raw = await readBlobText(blobAppDataPath);
+  const latestPath =
+    (await findLatestBlobPath(`${blobAppDataPrefix}-`)) ?? legacyBlobAppDataPath;
+  const raw = await readBlobText(latestPath);
   if (!raw) {
     return null;
   }
@@ -96,11 +117,30 @@ async function readBlobAppData(): Promise<AppData | null> {
 }
 
 async function writeBlobAppData(data: AppData): Promise<void> {
+  const pathname = `${blobAppDataPrefix}-${Date.now()}.json`;
   await writeBlobData(
-    blobAppDataPath,
+    pathname,
     JSON.stringify(data, null, 2),
     "application/json; charset=utf-8"
   );
+
+  void cleanupOldBlobStateFiles();
+}
+
+async function cleanupOldBlobStateFiles() {
+  try {
+    const response = await listBlobs({ prefix: `${blobAppDataPrefix}-`, limit: 20 });
+    const stale = [...response.blobs]
+      .sort((left, right) => right.uploadedAt.getTime() - left.uploadedAt.getTime())
+      .slice(MAX_STORED_STATE_VERSIONS)
+      .map((blob) => blob.pathname);
+
+    if (stale.length > 0) {
+      await deleteBlob(stale);
+    }
+  } catch {
+    // Ignore cleanup failures; keeping extra state snapshots is harmless.
+  }
 }
 
 async function seedBlobStorage(): Promise<AppData> {
