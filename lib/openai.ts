@@ -27,6 +27,7 @@ export async function rerankWithOpenAI(
     "Prefer a balanced digest across the user's different interests when enough relevant stories exist.",
     "Avoid overloading the ranking with one source or one single topic unless the user is narrowly focused on that topic.",
     "Demote stories that only match one broad keyword such as war or politics without also matching the user's stronger technology, AI, markets, or company interests.",
+    "Treat broad political or war keywords as context, not as primary interest signals, unless the user explicitly centers their interests on them.",
     `Audience interests: ${settings.interests.join(", ")}.`,
     `Keywords: ${settings.keywords.join(", ")}.`,
     `Exclusions: ${settings.exclusions.join(", ")}.`,

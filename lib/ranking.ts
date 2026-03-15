@@ -5,7 +5,8 @@ import {
   buildPreferenceProfile,
   clamp,
   detectTopicsInText,
-  extractImportantTokens
+  extractImportantTokens,
+  isContextualTopic
 } from "@/lib/preferences";
 import {
   CandidateArticle,
@@ -16,7 +17,6 @@ import {
 import { normalizeTokens, slugify, uniqueBy } from "@/lib/utils";
 
 const BROAD_CONTEXT_TOPICS = new Set(["europe", "world", "politics"]);
-const SATURATED_TOPICS = new Set(["war", "politics", "world", "europe"]);
 
 function containsTerm(text: string, term: string): boolean {
   if (!term) {
@@ -97,21 +97,26 @@ export function scoreCandidates(
       const interestCategoryMatches = profile.interestTerms.filter((term) =>
         containsTerm(categoryText, term)
       );
-      const keywordTitleMatches = profile.keywordTerms.filter((term) =>
+      const anchorKeywordTitleMatches = profile.anchorKeywordTerms.filter((term) =>
         containsTerm(titleText, term)
       );
-      const keywordSummaryMatches = profile.keywordTerms.filter((term) =>
+      const anchorKeywordSummaryMatches = profile.anchorKeywordTerms.filter((term) =>
         containsTerm(summaryText, term)
       );
-      const keywordCategoryMatches = profile.keywordTerms.filter((term) =>
+      const anchorKeywordCategoryMatches = profile.anchorKeywordTerms.filter((term) =>
         containsTerm(categoryText, term)
       );
-      const coreTitleMatches = profile.coreTerms.filter((term) => containsTerm(titleText, term));
+      const contextualKeywordTitleMatches = profile.contextualKeywordTerms.filter((term) =>
+        containsTerm(titleText, term)
+      );
+      const contextualKeywordSummaryMatches = profile.contextualKeywordTerms.filter((term) =>
+        containsTerm(summaryText, term)
+      );
+      const contextualKeywordCategoryMatches = profile.contextualKeywordTerms.filter((term) =>
+        containsTerm(categoryText, term)
+      );
       const coreSummaryMatches = profile.coreTerms.filter((term) =>
         containsTerm(summaryText, term)
-      );
-      const coreCategoryMatches = profile.coreTerms.filter((term) =>
-        containsTerm(categoryText, term)
       );
       const expansionTitleMatches = profile.expansionTerms.filter((term) =>
         containsTerm(titleText, term)
@@ -137,34 +142,53 @@ export function scoreCandidates(
       const keywordTopicHits = articleTopics.filter((topic) =>
         profile.keywordTopics.includes(topic)
       );
+      const anchorKeywordTopicHits = articleTopics.filter((topic) =>
+        profile.anchorKeywordTopics.includes(topic)
+      );
+      const contextualKeywordTopicHits = articleTopics.filter((topic) =>
+        profile.contextualKeywordTopics.includes(topic)
+      );
       const topicHits = uniqueBy(
         [...interestTopicHits, ...keywordTopicHits].filter((topic) =>
           profile.desiredTopics.includes(topic)
         ),
         (topic) => topic
       );
-      const strongTopicHits = topicHits.filter((topic) => !BROAD_CONTEXT_TOPICS.has(topic));
+      const strongTopicHits = topicHits.filter(
+        (topic) => !BROAD_CONTEXT_TOPICS.has(topic) && !isContextualTopic(topic)
+      );
       const sourceAffinity = article.source.topics.some((topic) =>
         profile.interestTopics.includes(topic)
       )
         ? 0.12
-        : article.source.topics.some((topic) => profile.keywordTopics.includes(topic))
+        : article.source.topics.some((topic) => profile.anchorKeywordTopics.includes(topic))
           ? 0.04
           : 0;
       const matchedTopics = uniqueBy(
-        [...interestTopicHits, ...keywordTopicHits, ...strongTopicHits],
+        [...strongTopicHits, ...interestTopicHits, ...anchorKeywordTopicHits, ...contextualKeywordTopicHits],
         (topic) => topic
       ).slice(0, 4);
       const matchedTerms = uniqueBy(
         [
           ...interestTitleMatches,
           ...interestCategoryMatches,
-          ...keywordTitleMatches,
-          ...keywordCategoryMatches,
-          ...coreSummaryMatches,
-          ...expansionTitleMatches,
-          ...expansionCategoryMatches,
-          ...expansionSummaryMatches,
+          ...anchorKeywordTitleMatches,
+          ...anchorKeywordCategoryMatches,
+          ...anchorKeywordSummaryMatches,
+          ...(interestTitleMatches.length > 0 ||
+          interestCategoryMatches.length > 0 ||
+          anchorKeywordTitleMatches.length > 0 ||
+          anchorKeywordCategoryMatches.length > 0 ||
+          strongTopicHits.length > 0
+            ? [
+                ...coreSummaryMatches,
+                ...expansionTitleMatches,
+                ...expansionCategoryMatches,
+                ...expansionSummaryMatches,
+                ...contextualKeywordTitleMatches,
+                ...contextualKeywordCategoryMatches
+              ]
+            : []),
           ...topicHits
         ],
         (term) => term
@@ -172,20 +196,25 @@ export function scoreCandidates(
 
       const titleWeight =
         interestTitleMatches.length * 3.2 +
-        keywordTitleMatches.length * 3.8 +
+        anchorKeywordTitleMatches.length * 3.8 +
+        contextualKeywordTitleMatches.length * 0.55 +
         expansionTitleMatches.length * 0.9 +
         interestTopicHits.length * 0.8 +
-        keywordTopicHits.length * 0.28;
+        anchorKeywordTopicHits.length * 0.28 +
+        contextualKeywordTopicHits.length * 0.08;
       const categoryWeight =
         interestCategoryMatches.length * 2.4 +
-        keywordCategoryMatches.length * 2.8 +
+        anchorKeywordCategoryMatches.length * 2.8 +
+        contextualKeywordCategoryMatches.length * 0.4 +
         expansionCategoryMatches.length * 0.65 +
         interestTopicHits.length * 0.55 +
-        keywordTopicHits.length * 0.2;
+        anchorKeywordTopicHits.length * 0.2 +
+        contextualKeywordTopicHits.length * 0.05;
       const summaryWeight =
         interestSummaryMatches.length * 0.55 +
-        keywordSummaryMatches.length * 0.75 +
-        expansionSummaryMatches.length * 0.28;
+        anchorKeywordSummaryMatches.length * 0.75 +
+        contextualKeywordSummaryMatches.length * 0.12 +
+        expansionSummaryMatches.length * 0.18;
       const sourceFeedback = clamp(profile.sourceScores[article.source.name] ?? 0, -3, 3) * 0.08;
       const termFeedback = matchedTerms.reduce(
         (score, term) => score + clamp(profile.termScores[term] ?? 0, -3, 3) * 0.05,
@@ -208,29 +237,34 @@ export function scoreCandidates(
         interestTitleMatches.length +
         interestCategoryMatches.length +
         interestSummaryMatches.length;
-      const directKeywordHits =
-        keywordTitleMatches.length +
-        keywordCategoryMatches.length +
-        keywordSummaryMatches.length;
-      const directTitleHits = interestTitleMatches.length + keywordTitleMatches.length;
-      const keywordOnlyBroadMatch =
-        directInterestHits === 0 &&
-        interestTopicHits.length === 0 &&
-        directKeywordHits <= 2 &&
-        keywordTopicHits.some((topic) => SATURATED_TOPICS.has(topic));
+      const directAnchorKeywordHits =
+        anchorKeywordTitleMatches.length +
+        anchorKeywordCategoryMatches.length +
+        anchorKeywordSummaryMatches.length;
+      const directContextKeywordHits =
+        contextualKeywordTitleMatches.length +
+        contextualKeywordCategoryMatches.length +
+        contextualKeywordSummaryMatches.length;
+      const directKeywordHits = directAnchorKeywordHits + directContextKeywordHits;
+      const directTitleHits = interestTitleMatches.length + anchorKeywordTitleMatches.length;
+      const highSignalHits = directInterestHits + directAnchorKeywordHits;
+      const contextOnlyMatch =
+        highSignalHits === 0 &&
+        strongTopicHits.length === 0 &&
+        (directContextKeywordHits > 0 || contextualKeywordTopicHits.length > 0);
       const passesGate =
         avoidMatches.length === 0 &&
         (
           directTitleHits > 0 ||
           interestCategoryMatches.length > 0 ||
-          keywordCategoryMatches.length > 0 ||
-          (directKeywordHits >= 2 && rawRelevance >= 2.5) ||
-          (directInterestHits >= 1 && rawRelevance >= 2.2) ||
-          (interestTopicHits.length > 0 && rawRelevance >= 2.3) ||
-          (strongTopicHits.length > 0 && (directInterestHits > 0 || directKeywordHits > 1) && rawRelevance >= 2.8) ||
-          (rawRelevance >= 5.2 && directInterestHits + directKeywordHits >= 2)
+          anchorKeywordCategoryMatches.length > 0 ||
+          (highSignalHits >= 2 && rawRelevance >= 2.2) ||
+          (directInterestHits >= 1 && rawRelevance >= 2.1) ||
+          (strongTopicHits.length > 0 && highSignalHits >= 1 && rawRelevance >= 2.1) ||
+          (strongTopicHits.length > 0 && sourceAffinity > 0 && rawRelevance >= 2.9) ||
+          (rawRelevance >= 5.4 && highSignalHits >= 2)
         ) &&
-        !(keywordOnlyBroadMatch && rawRelevance < 5.8);
+        !contextOnlyMatch;
       const topicMatch = clamp(rawRelevance / 6.2, 0, 1.35);
       const sourceReputation = article.source.reputation;
       const regionBoost = preferredRegions.has(article.source.region.toLowerCase()) ? 0.12 : 0;
@@ -260,8 +294,8 @@ export function scoreCandidates(
       const feedbackBoost = clamp(sourceFeedback + termFeedback + topicFeedback, -0.3, 0.35);
       const offTopicPenalty = passesGate ? 0 : 0.85;
       const narrowMatchPenalty =
-        directInterestHits === 0 && directKeywordHits <= 1 && matchedTerms.length <= 2 ? 0.24 : 0;
-      const keywordOnlyTopicPenalty = keywordOnlyBroadMatch ? 0.34 : 0;
+        directInterestHits === 0 && directAnchorKeywordHits <= 1 && matchedTerms.length <= 2 ? 0.24 : 0;
+      const keywordOnlyTopicPenalty = contextOnlyMatch ? 0.44 : directContextKeywordHits > 0 ? 0.12 : 0;
       const total = Number(
         (
           topicMatch * 0.52 +
@@ -322,7 +356,9 @@ export function selectTopStories(
   const maxPerTopic = storyTarget >= 10 ? 3 : 2;
 
   function getPrimaryTopic(candidate: CandidateArticle): string {
-    return candidate.matchedTopics[0] ?? "__general__";
+    return candidate.matchedTopics.find((topic) => !isContextualTopic(topic)) ??
+      candidate.matchedTopics[0] ??
+      "__general__";
   }
 
   function trySelectCandidate(
@@ -377,12 +413,18 @@ export function selectTopStories(
     topicCounts.set(primaryTopic, sameTopicCount + 1);
   }
 
-  const topicSeedCandidates = uniqueBy(
+  const strongTopicSeedCandidates = uniqueBy(
+    candidates.filter((candidate) =>
+      candidate.matchedTopics.some((topic) => !isContextualTopic(topic))
+    ),
+    (candidate) => getPrimaryTopic(candidate)
+  );
+  const fallbackTopicSeedCandidates = uniqueBy(
     candidates.filter((candidate) => candidate.matchedTopics.length > 0),
     (candidate) => getPrimaryTopic(candidate)
   );
 
-  for (const candidate of topicSeedCandidates) {
+  for (const candidate of [...strongTopicSeedCandidates, ...fallbackTopicSeedCandidates]) {
     trySelectCandidate(candidate, 0.4, 1);
 
     if (selected.length >= storyTarget) {

@@ -126,4 +126,40 @@ describe("ranking", () => {
     expect(selected.some((story) => story.title.includes("Chip stocks"))).toBe(true);
     expect(selected.filter((story) => story.sourceId === nytWorld.id).length).toBeLessThanOrEqual(1);
   });
+
+  test("rejects context-only geopolitics stories when stronger interests exist", () => {
+    const nytWorld = REPUTABLE_SOURCES.find((source) => source.id === "nytimes-world") ?? REPUTABLE_SOURCES[0];
+    const reutersBusiness =
+      REPUTABLE_SOURCES.find((source) => source.id === "reuters-business") ?? REPUTABLE_SOURCES[0];
+    const settings = {
+      ...DEFAULT_SETTINGS,
+      interests: ["technology", "artificial intelligence", "S&P 500"],
+      keywords: ["OpenAI", "markets", "war", "Trump"]
+    };
+
+    const candidates = scoreCandidates(
+      [
+        {
+          title: "War intensifies as overnight strikes continue",
+          url: "https://example.com/war-only",
+          publishedAt: new Date().toISOString(),
+          summary: "A broad geopolitics update about the war and diplomatic fallout.",
+          categories: ["world"],
+          source: nytWorld
+        },
+        {
+          title: "S&P 500 rises as OpenAI spending lifts chip and cloud shares",
+          url: "https://example.com/ai-markets",
+          publishedAt: new Date().toISOString(),
+          summary: "Markets rally as investors price in new artificial intelligence demand.",
+          categories: ["markets", "technology"],
+          source: reutersBusiness
+        }
+      ],
+      settings
+    );
+
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]?.title).toContain("S&P 500 rises");
+  });
 });

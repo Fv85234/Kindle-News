@@ -143,14 +143,39 @@ export const TOPIC_KEYWORDS: Record<string, string[]> = {
   ]
 };
 
+export const CONTEXTUAL_TOPICS = ["world", "politics", "war"] as const;
+
+const CONTEXTUAL_TERMS = new Set([
+  "war",
+  "trump",
+  "biden",
+  "president",
+  "politics",
+  "political",
+  "government",
+  "congress",
+  "parliament",
+  "military",
+  "missile",
+  "troops",
+  "ceasefire",
+  "sanctions",
+  "diplomacy",
+  "conflict"
+]);
+
 export type PreferenceProfile = {
   interestTerms: string[];
   keywordTerms: string[];
+  anchorKeywordTerms: string[];
+  contextualKeywordTerms: string[];
   coreTerms: string[];
   expansionTerms: string[];
   avoidTerms: string[];
   interestTopics: string[];
   keywordTopics: string[];
+  anchorKeywordTopics: string[];
+  contextualKeywordTopics: string[];
   desiredTopics: string[];
   sourceScores: Record<string, number>;
   termScores: Record<string, number>;
@@ -222,15 +247,37 @@ export function inferDesiredTopics(terms: string[]): string[] {
   return uniqueBy(matchedTopics, (topic) => topic);
 }
 
+export function isContextualTopic(topic: string): boolean {
+  return CONTEXTUAL_TOPICS.includes(topic as (typeof CONTEXTUAL_TOPICS)[number]);
+}
+
+export function isContextualTerm(term: string): boolean {
+  const normalized = normalizeTokens([term])[0];
+  if (!normalized) {
+    return false;
+  }
+
+  if (CONTEXTUAL_TERMS.has(normalized)) {
+    return true;
+  }
+
+  const inferredTopics = inferDesiredTopics([normalized]);
+  return inferredTopics.length > 0 && inferredTopics.every((topic) => isContextualTopic(topic));
+}
+
 export function buildPreferenceProfile(
   settings: DigestSettings,
   feedbackMemory: FeedbackMemory = DEFAULT_FEEDBACK_MEMORY
 ): PreferenceProfile {
   const interestTerms = normalizeTokens(settings.interests);
   const keywordTerms = normalizeTokens(settings.keywords);
+  const anchorKeywordTerms = keywordTerms.filter((term) => !isContextualTerm(term));
+  const contextualKeywordTerms = keywordTerms.filter((term) => isContextualTerm(term));
   const rawTerms = [...interestTerms, ...keywordTerms];
   const interestTopics = inferDesiredTopics(interestTerms);
   const keywordTopics = inferDesiredTopics(keywordTerms);
+  const anchorKeywordTopics = keywordTopics.filter((topic) => !isContextualTopic(topic));
+  const contextualKeywordTopics = keywordTopics.filter((topic) => isContextualTopic(topic));
   const desiredTopics = uniqueBy([...interestTopics, ...keywordTopics], (topic) => topic);
   const topicExpansions = desiredTopics.flatMap((topic) => TOPIC_KEYWORDS[topic] ?? []);
   const positiveTerms = topScoredEntries(feedbackMemory.termScores, "positive", 12);
@@ -240,6 +287,8 @@ export function buildPreferenceProfile(
   return {
     interestTerms: uniqueBy(interestTerms, (term) => term),
     keywordTerms: uniqueBy(keywordTerms, (term) => term),
+    anchorKeywordTerms: uniqueBy(anchorKeywordTerms, (term) => term),
+    contextualKeywordTerms: uniqueBy(contextualKeywordTerms, (term) => term),
     coreTerms: uniqueBy(rawTerms, (term) => term),
     expansionTerms: uniqueBy([...topicExpansions, ...positiveTerms], (term) => term),
     avoidTerms: uniqueBy(
@@ -248,6 +297,8 @@ export function buildPreferenceProfile(
     ),
     interestTopics,
     keywordTopics,
+    anchorKeywordTopics,
+    contextualKeywordTopics,
     desiredTopics,
     sourceScores: feedbackMemory.sourceScores,
     termScores: feedbackMemory.termScores,
@@ -277,7 +328,10 @@ export function pickRelevantSources(
       profile.interestTopics.includes(topic)
     ).length;
     const keywordTopicOverlap = source.topics.filter((topic) =>
-      profile.keywordTopics.includes(topic)
+      profile.anchorKeywordTopics.includes(topic)
+    ).length;
+    const contextualKeywordOverlap = source.topics.filter((topic) =>
+      profile.contextualKeywordTopics.includes(topic)
     ).length;
     const termOverlap = source.topics.filter((topic) =>
       profile.coreTerms.some((term) => term.includes(topic) || topic.includes(term))
@@ -285,10 +339,11 @@ export function pickRelevantSources(
     const regionBoost = preferredRegions.has(source.region.toLowerCase()) ? 0.5 : 0;
     const languageBoost = preferredLanguages.has(source.language.toLowerCase()) ? 0.3 : 0;
     const feedbackBoost = clamp(profile.sourceScores[source.name] ?? 0, -2, 2) * 0.25;
-    const genericTopicPenalty =
-      source.topics.some((topic) => ["world", "war", "politics"].includes(topic)) &&
-      interestTopicOverlap === 0
-        ? 0.4
+    const contextualSourcePenalty =
+      source.topics.some((topic) => isContextualTopic(topic)) &&
+      interestTopicOverlap === 0 &&
+      keywordTopicOverlap === 0
+        ? 1.8 + contextualKeywordOverlap * 0.7
         : 0;
 
     return {
@@ -296,11 +351,12 @@ export function pickRelevantSources(
       score:
         interestTopicOverlap * 2.9 +
         keywordTopicOverlap * 1.3 +
+        contextualKeywordOverlap * 0.15 +
         termOverlap * 1.2 +
         regionBoost +
         languageBoost +
         feedbackBoost -
-        genericTopicPenalty -
+        contextualSourcePenalty -
         source.priority * 0.1
     };
   })
@@ -308,7 +364,9 @@ export function pickRelevantSources(
     .sort((left, right) => right.score - left.score)
     .map(({ source }) => source);
 
-  const fallback = REPUTABLE_SOURCES.filter((source) => source.priority === 1);
+  const fallback = REPUTABLE_SOURCES.filter(
+    (source) => source.priority === 1 && !source.topics.every((topic) => isContextualTopic(topic))
+  );
   return uniqueBy([...scored, ...fallback], (source) => source.id).slice(0, 10);
 }
 

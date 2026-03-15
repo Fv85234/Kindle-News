@@ -26,4 +26,20 @@ describe("preference-driven source selection", () => {
     expect(profile.coreTerms).toContain("technology");
     expect(profile.expansionTerms.length).toBeGreaterThan(0);
   });
+
+  test("does not prioritize world feeds from contextual keywords alone", () => {
+    const settings = {
+      ...DEFAULT_SETTINGS,
+      interests: ["technology", "artificial intelligence", "markets"],
+      keywords: ["OpenAI", "war", "Trump"]
+    };
+
+    const sources = pickRelevantSources(settings, DEFAULT_FEEDBACK_MEMORY);
+    const names = sources.map((source) => source.name);
+
+    expect(names.slice(0, 4)).not.toContain("Reuters World");
+    expect(names.slice(0, 4)).not.toContain("BBC World");
+    expect(names).toContain("Reuters Technology");
+    expect(names).toContain("Reuters Business");
+  });
 });

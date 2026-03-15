@@ -22,7 +22,12 @@ const BLOCKED_URL_PATTERNS = [
   "/commentisfree/",
   "/interactive/",
   "/ng-interactive/",
-  "/newsletter/"
+  "/newsletter/",
+  "/games/",
+  "/crosswords/",
+  "/letters/",
+  "/opinion/",
+  "/opinionisfree/"
 ];
 const BLOCKED_TITLE_PATTERNS = [
   /^tech now$/i,
@@ -33,7 +38,11 @@ const BLOCKED_TITLE_PATTERNS = [
   /^hardtalk$/i,
   /^here'?s what happened /i,
   /\blive updates?\b/i,
-  /\brecap\b/i
+  /\brecap\b/i,
+  /\bbrief letters\b/i,
+  /\bquiz\b/i,
+  /\bopinion\b/i,
+  /\beditorial\b/i
 ];
 
 function toSafeString(input: unknown, fallback = ""): string {
